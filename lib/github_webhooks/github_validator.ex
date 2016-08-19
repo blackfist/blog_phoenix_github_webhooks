@@ -6,8 +6,9 @@ defmodule GithubWebhooks.GithubValidiator do
     validate_github(conn, options)
   end
 
-  def validate_github(conn, options) do
+  def validate_github(conn, _options) do
    IO.inspect get_signature(conn)
+   conn
   end
 
   def get_signature(conn) do

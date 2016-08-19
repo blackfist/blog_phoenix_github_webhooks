@@ -3,6 +3,7 @@ defmodule GithubWebhooks.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug GithubWebhooks.GithubValidiator
   end
 
   scope "/api", GithubWebhooks do

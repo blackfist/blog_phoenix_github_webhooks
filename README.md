@@ -129,9 +129,10 @@ defmodule GithubWebhooks.GithubValidiator do
   def init(options), do: options
   def call(conn, options) do
     validate_github(conn, options)
+    conn
   end
 
-  def validate_github(conn, options) do
+  def validate_github(conn, _options) do
    IO.inspect get_signature(conn)
   end
 
@@ -143,3 +144,16 @@ defmodule GithubWebhooks.GithubValidiator do
   end
 end
 ```
+
+Then in your `web/router.ex` file, let's modify the :api pipeline so that our plug gets run every time.
+
+```
+pipeline :api do
+  plug :accepts, ["json"]
+  plug GithubWebhooks.GithubValidiator
+end
+```
+
+Now when you run `curl -H "X-Hub-Signature: sha1=thisisatest" -H "Content-Type: application/json" -X POST -d '{"whats": "updog"}' http://localhost:4000/api/github` you'll see `thanks, GitHub` in the curl window and amongst the output in the server's window you'll see "thisisatest."
+
+![sample output with thisisatest highlighted](priv/static/images/test.png)
