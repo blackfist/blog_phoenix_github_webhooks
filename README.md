@@ -6,7 +6,6 @@
  * Attempting to to implement a plug that reads the body before the parser renders the parsers unworkable. The body is read-once.
  * Use a secure comparison to mitigate timing attacks.
  * This repo is an example of how to do it in Phoenix.
- * Environment variables need to be available at compile time.
 
 ## What are we going to do?
 
