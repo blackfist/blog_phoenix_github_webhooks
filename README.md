@@ -4,6 +4,7 @@
  * GitHub hashes the raw body of their messages
  * You need to implement a custom parser to calculate the hash and still parse the JSON.
  * Attempting to to implement a plug that reads the body before the parser renders the parsers unworkable. The body is read-once.
+ * Use a secure comparison to mitigate timing attacks.
  * This repo is an example of how to do it in Phoenix.
  * Environment variables need to be available at compile time.
 
@@ -33,7 +34,7 @@ also create a copy of the unaltered body and put that in the `conn`. Let's get s
 
 `mix phoenix.new github_webhooks --no-html --no-brunch`
 
-Add this to `mix.exs`. When we compare the hash value provided by GitHub to the
+Add this to `mix.exs` in the `defp deps do` block. When we compare the hash value provided by GitHub to the
 hash value that we calculate we want to make sure that we're not opening ourselves up
 to [timing attacks](https://codahale.com/a-lesson-in-timing-attacks/). So we need to do
 a secure comparison instead of a simple `==`.
@@ -249,4 +250,37 @@ Then a debug message telling us which controller is processing the message
 
 `[debug] Processing by GithubWebhooks.GithubController.index/2`
 
-And the the contents of `conn.private` because our index action says `IO.inspect conn.private`. One of the fields in `conn.private` will be `raw_body` and it will have the unaltered, unparsed JSON that was sent from GitHub.
+And the the contents of `conn.private` because our index action says `IO.inspect conn.private`. One of the fields in `conn.private` will be `raw_body` and it will have the unaltered, unparsed JSON that was sent from GitHub. Boo ya!
+
+## Hash the raw body
+We need to generate a cryptographic hash of the raw body that we captured and we need to include the secret value that we gave to GitHub when we set up the web hook. The best way to pass secrets into our application is to use environment variables, which is what we're going to do here. Let's open up `config/config.exs` and add this line:
+
+```
+# Shared secret with github
+config :github_webhooks, :github_secret, System.get_env("GITHUB_WEBHOOK_SECRET")
+```
+
+Let's head back over to `github_validator.ex` and make some changes to the `validate_github` function.
+
+```
+def validate_github(conn, _options) do
+ key = Application.get_env(:github_webhooks, :github_secret)
+ body = conn.private.raw_body
+ signature = get_signature(conn)
+ hmac = :crypto.hmac(:sha, key, body) |> Base.encode16(case: :lower)
+
+ case SecureCompare.compare(hmac, signature) do
+   true -> IO.puts "Good signature from GitHub"
+    conn
+   _ -> IO.puts "Signature check failed"
+    conn
+    |> send_resp(401, "Not Authorized")
+    |> halt
+ end
+end
+```
+
+Now if you run that same `curl -H "X-Hub-Signature: sha1=thisisatest" -H "Content-Type: application/json" -X POST -d '{"whats": "updog"}' http://localhost:4000/api/github` you'll get a 401 Not Authorized message back. But, if you update your GitHub repo you'll see it validate and send a 200 back.
+
+## Conclusion
+So there you have it. If you think I messed up or you think something should be included, just send a PR to this repo. Thanks for reading.

@@ -5,6 +5,9 @@
 # is restricted to this project.
 use Mix.Config
 
+# Shared secret with github
+config :github_webhooks, :github_secret, System.get_env("GITHUB_WEBHOOK_SECRET")
+
 # General application configuration
 config :github_webhooks,
   ecto_repos: [GithubWebhooks.Repo]

@@ -35,6 +35,7 @@ defmodule GithubWebhooks.Mixfile do
      {:phoenix_ecto, "~> 3.0"},
      {:postgrex, ">= 0.0.0"},
      {:gettext, "~> 0.11"},
+     {:secure_compare, "~> 0.0.1"},
      {:cowboy, "~> 1.0"}]
   end
 
