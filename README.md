@@ -157,3 +157,96 @@ end
 Now when you run `curl -H "X-Hub-Signature: sha1=thisisatest" -H "Content-Type: application/json" -X POST -d '{"whats": "updog"}' http://localhost:4000/api/github` you'll see `thanks, GitHub` in the curl window and amongst the output in the server's window you'll see "thisisatest."
 
 ![sample output with thisisatest highlighted](priv/static/images/test.png)
+
+And if you want, you can make a simple change to the git repo where you set up the web hook and see that you get a hash delivered with the payload from GitHub too.
+
+## Saving the body
+Here's where things get a bit harder. It would be tempting to just
+calculate the sha1 of `params` and compare the two. But the JSON parser actually changed the body that was sent by GitHub to make the `params.` So instead, we have to get to it first. We're going to make our own JSON parser.
+
+To start, `touch lib/json_parser.ex` to create an empty file. Then go into `deps/plug/lib/plug/parsers/json.ex` and copy everything into `lib/json_parser.` We're going to make a couple simple changes to this file.
+
+First, change the name of the module by making the top line read `defmodule GithubWebhooks.JSONParser do`.
+
+Then change the functions that have access to the raw body so that they include that in the private part of the conn using the `put_private`
+function. In cases where nothing was sent, I set `:raw_body` to an empty string. Like this:
+
+```
+def parse(conn, _type, _subtype, _headers, _opts) do
+  {:next, put_private(conn, :raw_body, "")}
+end
+```
+
+And then change all of the `decode` functions in the same way. Here is my finished `json_parser.ex` file.
+
+```
+defmodule GithubWebhooks.JSONParser do
+  @moduledoc """
+  Parses JSON request body.
+
+  JSON arrays are parsed into a `"_json"` key to allow
+  proper param merging.
+
+  An empty request body is parsed as an empty map.
+  """
+
+  @behaviour Plug.Parsers
+  import Plug.Conn
+
+  def parse(conn, "application", subtype, _headers, opts) do
+    if subtype == "json" || String.ends_with?(subtype, "+json") do
+      decoder = Keyword.get(opts, :json_decoder) ||
+                  raise ArgumentError, "JSON parser expects a :json_decoder option"
+      conn
+      |> read_body(opts)
+      |> decode(decoder)
+    else
+      {:next, conn}
+    end
+  end
+
+  def parse(conn, _type, _subtype, _headers, _opts) do
+    {:next, put_private(conn, :raw_body, "")}
+  end
+
+  defp decode({:more, _, conn}, _decoder) do
+    {:error, :too_large, put_private(conn, :raw_body, "")}
+  end
+
+  defp decode({:ok, "", conn}, _decoder) do
+    {:ok, %{}, put_private(conn, :raw_body, "")}
+  end
+
+  defp decode({:ok, body, conn}, decoder) do
+    case decoder.decode!(body) do
+      terms when is_map(terms) ->
+        {:ok, terms, put_private(conn, :raw_body, body)}
+      terms ->
+        {:ok, %{"_json" => terms}, put_private(conn, :raw_body, body)}
+    end
+  rescue
+    e -> raise Plug.Parsers.ParseError, exception: e
+  end
+end
+```
+
+Now that we have a new JSON parser, let's replace the JSON parser in `endpoint.ex` with the one we've written.
+
+```
+plug Plug.Parsers,
+  parsers: [:urlencoded, :multipart, GithubWebhooks.JSONParser],
+```
+
+We're getting close! Run the web server again (`mix phoenix.server`) and make a change to the GitHub repo where you set up the webhook. Now in the window where the server is running you'll see the POST request come in:
+
+`[info] POST /api/github`
+
+Followed by the hash that we extracted from the headers (yours will be different)
+
+`e3cf7b8affad77adb31ebd395bc60b3507889c1e`
+
+Then a debug message telling us which controller is processing the message
+
+`[debug] Processing by GithubWebhooks.GithubController.index/2`
+
+And the the contents of `conn.private` because our index action says `IO.inspect conn.private`. One of the fields in `conn.private` will be `raw_body` and it will have the unaltered, unparsed JSON that was sent from GitHub.

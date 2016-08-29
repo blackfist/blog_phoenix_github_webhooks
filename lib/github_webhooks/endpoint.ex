@@ -21,7 +21,7 @@ defmodule GithubWebhooks.Endpoint do
   plug Plug.Logger
 
   plug Plug.Parsers,
-    parsers: [:urlencoded, :multipart, :json],
+    parsers: [:urlencoded, :multipart, GithubWebhooks.JSONParser],
     pass: ["*/*"],
     json_decoder: Poison
 
